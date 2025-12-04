@@ -271,35 +271,61 @@ extension Container: _Resolver {
         option: ServiceKeyOption? = nil,
         invoker: @escaping ((Arguments) -> Any) -> Any
     ) -> Service? {
-        // No need to use weak self since the resolution will be executed before
-        // this function exits.
-        syncIfEnabled {
-            var resolvedInstance: Service?
-            let key = ServiceKey(serviceType: Service.self, argumentsType: Arguments.self, name: name, option: option)
+        var resolvedInstance: Service?
+        let key = ServiceKey(serviceType: Service.self, argumentsType: Arguments.self, name: name, option: option)
 
-            if key == Self.graphIdentifierKey {
-                return currentObjectGraph as? Service
-            }
-
-            if let entry = getEntry(for: key) {
-                resolvedInstance = resolve(entry: entry, invoker: invoker)
-            }
-
-            if resolvedInstance == nil {
-                resolvedInstance = resolveAsWrapper(name: name, option: option, invoker: invoker)
-            }
-
-            if resolvedInstance == nil {
-                debugHelper.resolutionFailed(
-                    serviceType: Service.self,
-                    key: key,
-                    availableRegistrations: getRegistrations()
-                )
-            }
-
-            return resolvedInstance
+        if let entry = getEntry(for: key) {
+            resolvedInstance = resolve(entry: entry, invoker: invoker)
         }
+
+        if resolvedInstance == nil {
+            resolvedInstance = resolveAsWrapper(name: name, option: option, invoker: invoker)
+        }
+
+        if resolvedInstance == nil {
+            debugHelper.resolutionFailed(
+                serviceType: Service.self,
+                key: key,
+                availableRegistrations: getRegistrations()
+            )
+        }
+
+        return resolvedInstance
     }
+//    public func _resolve<Service, Arguments>(
+//        name: String?,
+//        option: ServiceKeyOption? = nil,
+//        invoker: @escaping ((Arguments) -> Any) -> Any
+//    ) -> Service? {
+//        // No need to use weak self since the resolution will be executed before
+//        // this function exits.
+//        syncIfEnabled {
+//            var resolvedInstance: Service?
+//            let key = ServiceKey(serviceType: Service.self, argumentsType: Arguments.self, name: name, option: option)
+//
+//            if key == Self.graphIdentifierKey {
+//                return currentObjectGraph as? Service
+//            }
+//
+//            if let entry = getEntry(for: key) {
+//                resolvedInstance = resolve(entry: entry, invoker: invoker)
+//            }
+//
+//            if resolvedInstance == nil {
+//                resolvedInstance = resolveAsWrapper(name: name, option: option, invoker: invoker)
+//            }
+//
+//            if resolvedInstance == nil {
+//                debugHelper.resolutionFailed(
+//                    serviceType: Service.self,
+//                    key: key,
+//                    availableRegistrations: getRegistrations()
+//                )
+//            }
+//
+//            return resolvedInstance
+//        }
+//    }
 
     fileprivate func resolveAsWrapper<Wrapper, Arguments>(
         name: String?,
