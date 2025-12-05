@@ -428,31 +428,37 @@ extension Container: Resolver {
         entry: ServiceEntryProtocol,
         invoker: @escaping (Factory) -> Any
     ) -> Service? {
-        self.incrementResolutionDepth()
-        defer { self.decrementResolutionDepth() }
+        // No need to use weak self since the resolution will be executed before
+        // this function exits.
+        let resolution: () -> Service? = { [self] in
+            self.incrementResolutionDepth()
+            defer { self.decrementResolutionDepth() }
 
-        guard let currentObjectGraph = self.currentObjectGraph else {
-            fatalError("If accessing container from multiple threads, make sure to use a synchronized resolver.")
+            guard let currentObjectGraph = self.currentObjectGraph else {
+                fatalError("If accessing container from multiple threads, make sure to use a synchronized resolver.")
+            }
+
+            if let persistedInstance = self.persistedInstance(Service.self, from: entry, in: currentObjectGraph) {
+                return persistedInstance
+            }
+
+            let resolvedInstance = invoker(entry.factory as! Factory)
+            if let persistedInstance = self.persistedInstance(Service.self, from: entry, in: currentObjectGraph) {
+                // An instance for the key might be added by the factory invocation.
+                return persistedInstance
+            }
+            entry.storage.setInstance(resolvedInstance as Any, inGraph: currentObjectGraph)
+
+            if let completed = entry.initCompleted as? (Resolver, Any) -> Void,
+                let resolvedInstance = resolvedInstance as? Service {
+                completed(self, resolvedInstance)
+            }
+
+            return resolvedInstance as? Service
         }
-
-        if let persistedInstance = self.persistedInstance(Service.self, from: entry, in: currentObjectGraph) {
-            return persistedInstance
+        return lock.sync {
+            return resolution()
         }
-
-        let resolvedInstance = invoker(entry.factory as! Factory)
-        if let persistedInstance = self.persistedInstance(Service.self, from: entry, in: currentObjectGraph) {
-            // An instance for the key might be added by the factory invocation.
-            return persistedInstance
-        }
-        entry.storage.setInstance(resolvedInstance as Any, inGraph: currentObjectGraph)
-        graphInstancesInFlight.append(entry)
-
-        if let completed = entry.initCompleted as? (Resolver, Any) -> Void,
-           let resolvedInstance = resolvedInstance as? Service {
-            completed(self, resolvedInstance)
-        }
-
-        return resolvedInstance as? Service
     }
 
     private func persistedInstance<Service>(
