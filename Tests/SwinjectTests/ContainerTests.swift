@@ -81,6 +81,15 @@ class ContainerTests: XCTestCase {
         XCTAssertNil(cat)
     }
 
+    func testContainerDoesNotCreateZombies() {
+        let parent = Container()
+        let child = Container(parent: parent)
+
+        parent.register(Cat.self) { _ in Cat() }
+        weak var weakCat = child.resolve(Cat.self)
+        XCTAssertNotNil(weakCat)
+    }
+
     #if !SWIFT_PACKAGE
     func testContainerDoesNotTerminateGraphPrematurely() {
         let parent = Container()
@@ -211,6 +220,14 @@ class ContainerTests: XCTestCase {
         let cat2 = container.resolve(Animal.self) as? Cat
         XCTAssertNotNil(cat1)
         XCTAssert(cat1 === cat2)
+    }
+
+    func testContainerDoesNotMaintainStrongReferenceToObjectWithWeakScope() {
+        container.register(Animal.self) { _ in Cat() }
+            .inObjectScope(.weak)
+
+        weak var cat = container.resolve(Animal.self) as? Cat
+        XCTAssertNotNil(cat)
     }
 
     // MARK: Init completed event
