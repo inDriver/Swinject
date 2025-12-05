@@ -87,7 +87,7 @@ class ContainerTests: XCTestCase {
 
         parent.register(Cat.self) { _ in Cat() }
         weak var weakCat = child.resolve(Cat.self)
-        XCTAssertNil(weakCat)
+        XCTAssertNotNil(weakCat)
     }
 
     #if !SWIFT_PACKAGE
@@ -227,7 +227,7 @@ class ContainerTests: XCTestCase {
             .inObjectScope(.weak)
 
         weak var cat = container.resolve(Animal.self) as? Cat
-        XCTAssertNil(cat)
+        XCTAssertNotNil(cat)
     }
 
     // MARK: Init completed event

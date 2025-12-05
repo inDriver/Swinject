@@ -70,7 +70,7 @@ class SynchronizedResolverTests: XCTestCase {
     
     func testSynchronizedResolverSynchronousReadsWrites() {
         let iterationCount = 3_000
-        let container = Container()
+        let container = Container().synchronize() as! Container
         let registerExpectation = expectation(description: "register")
         let resolveExpectations = (0..<iterationCount).map { expectation(description: String(describing: $0)) }
         let resolutionLock = NSLock()
@@ -86,7 +86,7 @@ class SynchronizedResolverTests: XCTestCase {
         
         DispatchQueue.global(qos: .background).async {
             DispatchQueue.concurrentPerform(iterations: iterationCount) { (index) in
-                _ = container.synchronize().resolve(Animal.self)
+                _ = container.resolve(Animal.self)
                 resolutionLock.lock()
                 resolveExpectations[index].fulfill()
                 resolutionLock.unlock()
@@ -182,6 +182,77 @@ class SynchronizedResolverTests: XCTestCase {
                 _ = lazy?.instance
             }
         }
+    }
+
+    func testGraphIdentifierRestoredAfterLazyResolve() {
+        let container = Container()
+        container.register(LazilyResolvedProtocol.self) { _ in
+            LazilyResolved()
+        }
+        container.register(LazySingletonProtocol.self) {
+            let lazy = $0.resolve(Lazy<LazilyResolvedProtocol>.self)!
+            return LazyChild(lazy: lazy)
+        }
+        .inObjectScope(.container)
+        container.register(LazyChildProtocol.self) {
+            let lazy = $0.resolve(Lazy<LazilyResolvedProtocol>.self)!
+            return LazyChild(lazy: lazy)
+        }
+        container.register(LazyParentProtocol.self) {
+            let child1 = $0.resolve(LazyChildProtocol.self)!
+            let singleton = $0.resolve(LazySingletonProtocol.self)!
+            // Previously, accessing instance here would permanently
+            // hijack the graph identifier to the 'recalled' state.
+            _ = singleton.lazy.instance
+            let child2 = $0.resolve(LazyChildProtocol.self)!
+            return LazyParent(child1: child1, child2: child2)
+        }
+
+        // Resolve, but don't access lazy value yet.
+        _ = container.resolve(LazySingletonProtocol.self)!
+
+        // First lazy value access in LazyParent resolve, this 
+        // could've happened in its init or wherever.
+        let parent = container.resolve(LazyParentProtocol.self)!
+
+        XCTAssertIdentical(parent.child1, parent.child2)
+        XCTAssertIdentical(parent.child1.lazy.instance, parent.child2.lazy.instance)
+    }
+
+    func test_guaranteeThreadSafety() {
+        let numberOfQueues = 25
+        var expectations = [XCTestExpectation]()
+        let resolutionDate = Date() + 1
+
+        struct TestModel {
+            let name = "Testing"
+        }
+
+        let container = Container()
+
+        for _ in 0..<numberOfQueues {
+            DispatchQueue.global().async {
+                // Only an example to force the crash.
+                // This doesn't happen with ThreadSafeDictionary since the implementation would always verify
+                // the mutex before accessing the dictionary
+                Thread.sleep(until: resolutionDate)
+                container.register(TestModel.self) { _ in
+                    TestModel()
+                }
+            }
+        }
+
+        for _ in 0..<numberOfQueues {
+            let expectation = expectation(description: "Should have been resolved")
+            expectations.append(expectation)
+            DispatchQueue.global().async { [expectation] in
+                Thread.sleep(until: resolutionDate)
+                _ = container.synchronize().resolve(TestModel.self)
+                expectation.fulfill()
+            }
+        }
+
+        wait(for: expectations, timeout: 10)
     }
 }
 
