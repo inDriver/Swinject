@@ -414,6 +414,7 @@ extension Container: Resolver {
                 return persistedInstance
             }
             entry.storage.setInstance(resolvedInstance as Any, inGraph: currentObjectGraph)
+            graphInstancesInFlight.append(entry)
 
             if let completed = entry.initCompleted as? (Resolver, Any) -> Void,
                 let resolvedInstance = resolvedInstance as? Service {
